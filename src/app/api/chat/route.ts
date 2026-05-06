@@ -30,7 +30,18 @@ async function timed<T>(agent: string, input: string, run: () => Promise<T>) {
 }
 
 export async function POST(req: Request) {
-  const { messages }: { messages: UIMessage[] } = await req.json();
+  const body = (await req.json()) as { messages: UIMessage[]; memory?: string[] };
+  const messages = body.messages;
+  const memoryFacts = Array.isArray(body.memory) ? body.memory.filter((f): f is string => typeof f === 'string') : [];
+
+  const memoryBlock = memoryFacts.length === 0
+    ? ''
+    : `
+
+[USER MEMORY — 사용자에 대한 장기 기억]
+이전 대화에서 저장된 사실들 (자연스럽게 활용하되, "기억하고 있어요" 같은 메타 발언 자제):
+${memoryFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}
+`;
 
   const result = streamText({
     model: xai.chatModel(process.env.ORCHESTRATOR_MODEL || 'grok-4-fast-reasoning'),
@@ -67,7 +78,10 @@ export async function POST(req: Request) {
 - 번역체("~를 통해", "결론적으로", "주목할 만합니다") 자제.
 - 사용자가 콘텐츠 작성을 요청한 경우, 콘텐츠 본문은 humanize 도구를 거친 결과를 그대로 인용한다.
 
-스타일: 한국어, 간결. 사용자가 에이전트들의 협업을 단계별로 볼 수 있도록 도구를 순차 호출하라.`,
+[장기 기억 활용]
+사용자에 대해 새로 알게 된 중요한 사실(이름·역할·진행 중 프로젝트·결정사항·선호 도구·연락 채널 등)이 향후 대화에서 활용 가치 있으면 memorize 도구로 한 문장씩 저장하라. 단순 일회성·임시 정보는 저장하지 말 것. 같은 사실을 중복 저장 금지.
+
+스타일: 한국어, 간결. 사용자가 에이전트들의 협업을 단계별로 볼 수 있도록 도구를 순차 호출하라.${memoryBlock}`,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(10),
     tools: {
@@ -121,6 +135,21 @@ export async function POST(req: Request) {
           const briefSummary = text.length > 80 ? `${text.slice(0, 80)}…` : text;
           return timed('humanizer', briefSummary, () => runHumanizer(text));
         },
+      }),
+      memorize: tool({
+        description:
+          '사용자에 대해 알게 된 새로운 사실을 장기 기억에 저장합니다. 향후 대화에서 활용할 만한 사실(이름·역할·프로젝트·선호·결정사항)만 저장. 단순 일회성 정보 금지. 한 번에 한 사실씩.',
+        inputSchema: z.object({
+          fact: z
+            .string()
+            .describe('저장할 사실 한 문장 (예: "사용자 GitHub 아이디는 ang562112", "Vercel 자동 배포 프로젝트 진행 중")'),
+        }),
+        execute: async ({ fact }) => ({
+          agent: 'memory',
+          input: fact,
+          output: `📌 기억 저장: ${fact}`,
+          fact,
+        }),
       }),
     },
   });
