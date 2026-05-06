@@ -26,7 +26,13 @@ export async function runVideoProducer(brief: string): Promise<VideoProducerResu
 [권장] 플랫폼·해상도·예상 제작 일정 1줄
 [Preview Prompt] 한 문장 영문 프롬프트 (스토리보드 대표 프레임을 묘사하는 시각 프롬프트, X/Grok 이미지 생성용)
 
-스타일: 한국어, 14줄 이내, 압축적. Preview Prompt만 영문.`,
+[단일 이미지 요청 처리]
+사용자가 영상이 아니라 단일 이미지/그림만 요청한 경우(예: "고양이 그려줘", "사무실 사진 만들어줘"), 위 영상 형식 대신 다음 형식으로 짧게 응답:
+[이미지 컨셉] 한 문장
+[Preview Prompt] 영문 한 문장 — 사용자가 원한 이미지를 충실히 묘사
+이때 Script/Storyboard/Edit/Narration 섹션은 생략 가능.
+
+스타일: 한국어, 14줄 이내, 압축적. Preview Prompt만 영문. [Preview Prompt] 라인은 반드시 포함 (이미지 자동 생성에 사용).`,
     prompt: brief,
   });
 

@@ -86,7 +86,7 @@ export default function Chat() {
           The <span className="italic font-normal">Automation</span> Agency
         </h1>
         <p className="serif-display italic text-center text-[color:var(--ink-soft)] text-lg md:text-xl mt-3 tracking-wide">
-          오케스트레이터와 4명의 전문가가 당신의 의뢰를 처리합니다
+          오케스트레이터와 6명의 전문가가 당신의 의뢰를 처리합니다
         </p>
         <div className="flex items-center justify-center gap-3 mt-5">
           <div className="h-px w-10 brass-line" />
