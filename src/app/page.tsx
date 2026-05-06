@@ -317,7 +317,12 @@ function extractPromptText(input: unknown): string {
 function extractAgentOutput(output: unknown): string {
   if (!output || typeof output !== 'object') return '';
   const o = output as { output?: unknown };
-  if (typeof o.output === 'string') return o.output;
+  const inner = o.output;
+  if (typeof inner === 'string') return inner;
+  if (inner && typeof inner === 'object') {
+    const t = (inner as { text?: unknown }).text;
+    if (typeof t === 'string') return t;
+  }
   return JSON.stringify(output);
 }
 
@@ -327,9 +332,19 @@ function extractDurationMs(output: unknown): number | null {
   return typeof o.durationMs === 'number' ? o.durationMs : null;
 }
 
+function extractPreviewImageUrl(output: unknown): string | null {
+  if (!output || typeof output !== 'object') return null;
+  const o = output as { output?: unknown };
+  const inner = o.output;
+  if (!inner || typeof inner !== 'object') return null;
+  const url = (inner as { previewImageUrl?: unknown }).previewImageUrl;
+  return typeof url === 'string' ? url : null;
+}
+
 function AgentReport({ agent, part }: { agent: AgentMeta; part: ToolPart }) {
   const promptText = extractPromptText(part.input);
   const durationMs = extractDurationMs(part.output);
+  const previewImageUrl = extractPreviewImageUrl(part.output);
 
   return (
     <div className="paper-card rounded-sm overflow-hidden" style={borderAccentStyle(agent.cssVar, 1)}>
@@ -376,8 +391,24 @@ function AgentReport({ agent, part }: { agent: AgentMeta; part: ToolPart }) {
           </div>
         )}
         {part.state === 'output-available' && part.output != null && (
-          <div className="text-sm text-[color:var(--ink)] whitespace-pre-wrap leading-relaxed">
-            {extractAgentOutput(part.output)}
+          <div className="space-y-3">
+            <div className="text-sm text-[color:var(--ink)] whitespace-pre-wrap leading-relaxed">
+              {extractAgentOutput(part.output)}
+            </div>
+            {previewImageUrl && (
+              <figure className="mt-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewImageUrl}
+                  alt="Storyboard preview"
+                  className="w-full rounded-sm border"
+                  style={{ borderColor: `color-mix(in srgb, var(${agent.cssVar}) 40%, transparent)` }}
+                />
+                <figcaption className="text-[10px] tracking-[0.3em] uppercase font-mono mt-1 text-[color:var(--brass)]">
+                  ✦ Storyboard preview · X / Grok
+                </figcaption>
+              </figure>
+            )}
           </div>
         )}
         {part.state === 'output-error' && (

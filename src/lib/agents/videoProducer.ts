@@ -1,7 +1,13 @@
 import { generateText } from 'ai';
 import { dgrid } from '@/lib/dgrid';
+import { generateGrokImage } from '@/lib/xai';
 
-export async function runVideoProducer(brief: string): Promise<string> {
+export type VideoProducerResult = {
+  text: string;
+  previewImageUrl?: string;
+};
+
+export async function runVideoProducer(brief: string): Promise<VideoProducerResult> {
   const { text } = await generateText({
     model: dgrid.chatModel('openai/gpt-5.1'),
     system: `당신은 자동화 에이전시의 "영상제작팀(VideoProducer)" 팀장입니다.
@@ -18,9 +24,21 @@ export async function runVideoProducer(brief: string): Promise<string> {
 ✂️ Edit: 길이/BPM/주요 전환 1줄
 🎙️ Narration: 톤·페이스 1줄
 [권장] 플랫폼·해상도·예상 제작 일정 1줄
+[Preview Prompt] 한 문장 영문 프롬프트 (스토리보드 대표 프레임을 묘사하는 시각 프롬프트, X/Grok 이미지 생성용)
 
-스타일: 한국어, 12줄 이내, 압축적. 실제 제작에 들어갈 수 있을 만큼 구체적으로.`,
+스타일: 한국어, 14줄 이내, 압축적. Preview Prompt만 영문.`,
     prompt: brief,
   });
-  return text;
+
+  // Extract the [Preview Prompt] line for image generation
+  const previewMatch = text.match(/\[Preview Prompt\]\s*(.+?)(?:\n|$)/i);
+  const imagePrompt = previewMatch?.[1]?.trim();
+
+  let previewImageUrl: string | undefined;
+  if (imagePrompt) {
+    const url = await generateGrokImage(imagePrompt);
+    if (url) previewImageUrl = url;
+  }
+
+  return { text, previewImageUrl };
 }

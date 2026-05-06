@@ -13,11 +13,9 @@ import { runExecutor } from '@/lib/agents/executor';
 import { runDeployer } from '@/lib/agents/deployer';
 import { runVideoProducer } from '@/lib/agents/videoProducer';
 
-type AgentRunner = (input: string) => Promise<string>;
-
-async function timed(agent: string, runner: AgentRunner, input: string) {
+async function timed<T>(agent: string, input: string, run: () => Promise<T>) {
   const start = Date.now();
-  const output = await runner(input);
+  const output = await run();
   return {
     agent,
     input,
@@ -56,21 +54,21 @@ export async function POST(req: Request) {
         inputSchema: z.object({
           query: z.string().describe('조사할 주제·질문 (한 문장 이상의 컨텍스트 포함)'),
         }),
-        execute: async ({ query }) => timed('researcher', runResearcher, query),
+        execute: async ({ query }) => timed('researcher', query, () => runResearcher(query)),
       }),
       toolbox: tool({
         description: '도구 추천 에이전트(Toolbox)에게 작업에 맞는 도구·라이브러리 추천을 요청합니다.',
         inputSchema: z.object({
           task: z.string().describe('도구가 필요한 작업 설명'),
         }),
-        execute: async ({ task }) => timed('toolbox', runToolbox, task),
+        execute: async ({ task }) => timed('toolbox', task, () => runToolbox(task)),
       }),
       execute: tool({
         description: '실행 에이전트(Executor)에게 자동화 실행 계획을 전달해 시뮬레이션을 실행합니다.',
         inputSchema: z.object({
           plan: z.string().describe('실행 단계가 포함된 구체적 계획 (Toolbox의 결과를 반영)'),
         }),
-        execute: async ({ plan }) => timed('executor', runExecutor, plan),
+        execute: async ({ plan }) => timed('executor', plan, () => runExecutor(plan)),
       }),
       deploy: tool({
         description: '배포 에이전트(Deployer)에게 Vercel 배포 작업을 위임합니다.',
@@ -79,7 +77,7 @@ export async function POST(req: Request) {
             .string()
             .describe('배포 대상·환경 (예: "main 브랜치를 staging으로", "v1.2.0 태그를 prod로")'),
         }),
-        execute: async ({ target }) => timed('deployer', runDeployer, target),
+        execute: async ({ target }) => timed('deployer', target, () => runDeployer(target)),
       }),
       video: tool({
         description:
@@ -89,7 +87,7 @@ export async function POST(req: Request) {
             .string()
             .describe('영상 브리프 (목적, 타겟, 플랫폼, 길이, 핵심 메시지 등)'),
         }),
-        execute: async ({ brief }) => timed('videoProducer', runVideoProducer, brief),
+        execute: async ({ brief }) => timed('videoProducer', brief, () => runVideoProducer(brief)),
       }),
     },
   });
