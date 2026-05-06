@@ -69,18 +69,28 @@ export async function generateGrokImage(prompt: string): Promise<GrokImageResult
 
 /* ─────────── Video generation (async, polling) ─────────── */
 
-export type GrokVideoResult = { url: string } | { error: string };
+export type GrokVideoResult = { url: string; durationSec?: number } | { error: string };
 
 type VideoStartResponse = { request_id?: string };
 type VideoStatusResponse = {
-  status?: string;
+  status?: 'pending' | 'done' | 'failed' | string;
+  progress?: number;
+  video?: { url?: string; duration?: number };
   url?: string;
   data?: Array<{ url?: string }>;
   error?: string;
+  message?: string;
 };
 
 const VIDEO_POLL_INTERVAL_MS = 5_000;
 const VIDEO_POLL_TIMEOUT_MS = 240_000; // 4 minutes
+
+function extractVideoUrl(data: VideoStatusResponse): string | null {
+  if (data.video?.url) return data.video.url;
+  if (data.url) return data.url;
+  if (data.data?.[0]?.url) return data.data[0].url;
+  return null;
+}
 
 export async function generateGrokVideo(prompt: string): Promise<GrokVideoResult> {
   if (!process.env.XAI_API_KEY) return { error: 'XAI_API_KEY가 설정되지 않음' };
@@ -108,7 +118,7 @@ export async function generateGrokVideo(prompt: string): Promise<GrokVideoResult
     return { error: `비디오 작업 시작 네트워크 오류: ${msg}` };
   }
 
-  // Step 2: poll
+  // Step 2: poll until status === 'done' (or terminal failure)
   const deadline = Date.now() + VIDEO_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, VIDEO_POLL_INTERVAL_MS));
@@ -117,16 +127,27 @@ export async function generateGrokVideo(prompt: string): Promise<GrokVideoResult
         method: 'GET',
         headers: authHeaders(),
       });
-      if (res.status === 202) continue;
+      if (res.status === 202) continue; // still working
       if (!res.ok) {
         const detail = parseError(res.status, await res.text().catch(() => ''));
         return { error: `xAI 비디오 폴링 실패 — ${detail}` };
       }
       const data: VideoStatusResponse = await res.json();
-      const url = data.url ?? data.data?.[0]?.url;
-      if (url) return { url };
-      if (data.error) return { error: `xAI 비디오 생성 에러 — ${data.error}` };
-      // unexpected payload — keep polling a bit more
+
+      if (data.status === 'failed') {
+        const reason = data.error ?? data.message ?? 'unknown';
+        return { error: `xAI 비디오 생성 실패 — ${reason}` };
+      }
+
+      const url = extractVideoUrl(data);
+      if (data.status === 'done' && url) {
+        return { url, durationSec: data.video?.duration };
+      }
+      if (url) {
+        // Some shapes return URL without explicit status — accept anyway
+        return { url, durationSec: data.video?.duration };
+      }
+      // pending / unknown payload — keep polling
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[xai video poll]', msg);

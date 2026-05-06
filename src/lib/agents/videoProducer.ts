@@ -30,8 +30,10 @@ export async function runVideoProducer(brief: string): Promise<VideoProducerResu
 [Preview Prompt] 한 문장 영문 프롬프트 — 스토리보드 대표 프레임을 묘사하는 정적 이미지 프롬프트 (xAI Grok 이미지 생성용)
 [Video Prompt] (선택) 한 문장 영문 프롬프트 — 짧은 모션 묘사 포함, 6~10초 분량의 시네마틱 클립용 (xAI Grok 비디오 생성용)
 
-[Video Prompt 라인을 포함할지 결정]
-사용자 brief에 "영상", "video", "비디오", "광고", "릴스", "쇼츠", "유튜브", "튜토리얼", "모션", "movie", "clip" 같은 키워드가 명확히 있을 때만 [Video Prompt] 라인을 포함하세요. 단순 이미지·일러스트·그림 요청에는 [Video Prompt]를 생략 (비용/시간 절약).
+[Video Prompt 라인을 포함할지 결정 — 매우 중요]
+사용자 brief에 "영상", "video", "비디오", "광고", "릴스", "쇼츠", "유튜브", "튜토리얼", "모션", "movie", "clip", "트레일러", "프로모", "광고영상" 같은 키워드가 하나라도 있으면 **반드시** [Video Prompt] 라인을 포함하세요. 영상 요청인데 [Video Prompt]를 빠뜨리면 비디오 생성이 안 됩니다.
+단순 이미지·일러스트·그림 요청(예: "고양이 그림", "로고 디자인")에는 [Video Prompt] 생략 (비용/시간 절약).
+[Video Prompt] 형식: 6~10초짜리 시네마틱 모션을 묘사한 영문 한 문장. 예: "Cinematic 8-second close-up: a brass nameplate gleaming on dark walnut, slow zoom-in, warm lamplight."
 
 [단일 이미지 요청 처리]
 사용자가 영상이 아니라 단일 이미지/그림만 요청한 경우(예: "고양이 그려줘", "사무실 사진 만들어줘"), 위 영상 형식 대신 다음 형식으로 짧게 응답:
