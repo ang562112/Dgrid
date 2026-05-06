@@ -20,6 +20,7 @@
   --executor: #3d5e2d;   /* forest */
   --deployer: #6e2d3d;   /* oxblood */
   --video: #4a3a6e;      /* deep indigo */
+  --humanizer: #4a5340;  /* deep olive */
 
   --background: var(--paper);
   --foreground: var(--ink);
@@ -43,6 +44,7 @@
   --color-executor: var(--executor);
   --color-deployer: var(--deployer);
   --color-video: var(--video);
+  --color-humanizer: var(--humanizer);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-display);
@@ -68,6 +70,7 @@
     --executor: #8cc274;
     --deployer: #d490a3;
     --video: #a896d4;
+    --humanizer: #a8b58c;
   }
 }
 

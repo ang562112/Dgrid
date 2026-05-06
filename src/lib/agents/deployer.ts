@@ -13,7 +13,8 @@ export async function runDeployer(target: string): Promise<string> {
 3) URL: <https://가짜-deployment.vercel.app>
 4) 위험도: <low/medium/high + 이유>
 5) 롤백: <가능 여부, 명령>
-prod 환경 배포는 "휴먼 승인 필요" 명시.`,
+prod 환경 배포는 "휴먼 승인 필요" 명시.
+출력에 장식 마크다운(**굵게**, ## 헤더, --- 구분선) 자제. URL은 평문 그대로.`,
     prompt: target,
   });
   return text;

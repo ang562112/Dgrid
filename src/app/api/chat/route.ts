@@ -12,6 +12,7 @@ import { runToolbox } from '@/lib/agents/toolbox';
 import { runExecutor } from '@/lib/agents/executor';
 import { runDeployer } from '@/lib/agents/deployer';
 import { runVideoProducer } from '@/lib/agents/videoProducer';
+import { runHumanizer } from '@/lib/agents/humanizer';
 
 async function timed<T>(agent: string, input: string, run: () => Promise<T>) {
   const start = Date.now();
@@ -30,20 +31,28 @@ export async function POST(req: Request) {
   const result = streamText({
     model: dgrid.chatModel('anthropic/claude-sonnet-4.5'),
     system: `당신은 자동화 에이전시의 "Orchestrator"입니다.
-5명의 sub-agent를 도구로 호출해 협업을 조율합니다:
+6명의 sub-agent를 도구로 호출해 협업을 조율합니다:
 - research: 벤치마킹·사례 조사
 - toolbox: 작업에 적합한 도구·MCP·라이브러리 추천
 - execute: 실행 단계 시뮬레이션 (현재 mock)
 - deploy: Vercel 배포 관리 (현재 mock)
 - video: 영상제작팀에게 시나리오·스토리보드·편집 가이드 제작 위임
+- humanize: AI 티·마크다운 제거하여 한국어 텍스트를 자연스럽게 다듬기
 
 원칙:
 1) 사용자 요청을 받으면 어떤 에이전트(들)이 필요한지 한 줄 계획을 먼저 말한다.
 2) 일반 자동화: research → toolbox → execute → deploy 순서가 디폴트, 불필요한 단계는 건너뛴다.
 3) 영상 작업이 포함되면 video 에이전트에게 위임. 광고·튜토리얼·홍보영상은 자동으로 video 호출.
-4) 각 도구 호출 후 결과를 다음 도구의 입력으로 활용 (예: video 결과를 deploy의 페이로드로 첨부).
-5) prod 배포·destructive 작업은 반드시 휴먼 승인을 명시한다.
-6) 모든 위임이 끝나면 한국어로 종합 보고를 마지막 메시지로 출력한다.
+4) 글·기사·블로그·공지·SNS 카피·콘텐츠 작성이 산출물에 포함된 경우, 작성이 끝난 뒤 반드시 humanize에 그 텍스트를 넘겨 다듬은 결과를 사용자에게 노출한다.
+5) 각 도구 호출 후 결과를 다음 도구의 입력으로 활용 (예: video 결과를 deploy의 페이로드로 첨부, 작성 결과를 humanize의 입력으로).
+6) prod 배포·destructive 작업은 반드시 휴먼 승인을 명시한다.
+7) 모든 위임이 끝나면 한국어로 종합 보고를 마지막 메시지로 출력한다.
+
+[출력 스타일 규칙 — 매우 중요]
+- 사용자에게 노출되는 본인의 종합 보고는 마크다운 표기 사용 금지: **굵게**, ## 헤더, --- 구분선, 불릿(- *), 표(|...|) 모두 쓰지 않는다.
+- 자연스러운 한국어 단락으로 작성. 짧은 문장, 빈 줄로 단락 구분.
+- 번역체("~를 통해", "결론적으로", "주목할 만합니다") 자제.
+- 사용자가 콘텐츠 작성을 요청한 경우, 콘텐츠 본문은 humanize 도구를 거친 결과를 그대로 인용한다.
 
 스타일: 한국어, 간결. 사용자가 에이전트들의 협업을 단계별로 볼 수 있도록 도구를 순차 호출하라.`,
     messages: await convertToModelMessages(messages),
@@ -88,6 +97,17 @@ export async function POST(req: Request) {
             .describe('영상 브리프 (목적, 타겟, 플랫폼, 길이, 핵심 메시지 등)'),
         }),
         execute: async ({ brief }) => timed('videoProducer', brief, () => runVideoProducer(brief)),
+      }),
+      humanize: tool({
+        description:
+          '교열 에이전트(Humanizer)에게 텍스트를 넘겨 AI 티와 마크다운 표기를 제거한 자연스러운 한국어로 다듬게 합니다. 글·기사·블로그·공지·SNS 카피 등 사람에게 노출될 콘텐츠가 있을 때 마지막 단계로 호출하세요.',
+        inputSchema: z.object({
+          text: z.string().describe('AI 티와 마크다운을 제거할 한국어 원본 텍스트'),
+        }),
+        execute: async ({ text }) => {
+          const briefSummary = text.length > 80 ? `${text.slice(0, 80)}…` : text;
+          return timed('humanizer', briefSummary, () => runHumanizer(text));
+        },
       }),
     },
   });

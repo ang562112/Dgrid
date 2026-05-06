@@ -11,7 +11,8 @@ export async function runToolbox(task: string): Promise<string> {
 - 알림 → Slack Webhook, Discord, Resend
 - 데이터 → Postgres + Drizzle/Prisma, Supabase
 - 검색 → Tavily, Brave Search, MCP filesystem
-스타일: 한국어, 5줄 이내. 도구명 + 1줄 추천 이유. Executor가 이걸 보고 실행 계획을 짭니다.`,
+스타일: 한국어, 5줄 이내. 도구명 + 1줄 추천 이유. Executor가 이걸 보고 실행 계획을 짭니다.
+출력에 마크다운 표기(**굵게**, ## 헤더, --- 구분선, 표) 사용 자제. 도구명은 그대로 적되 장식은 빼고.`,
     prompt: task,
   });
   return text;

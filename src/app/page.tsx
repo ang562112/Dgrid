@@ -16,6 +16,7 @@ const AGENTS: Record<string, AgentMeta> = {
   execute:  { emoji: '⚡', name: 'Executor',      role: '실행 · 시뮬레이션',     cssVar: '--executor' },
   deploy:   { emoji: '🚀', name: 'Deployer',      role: 'Vercel 배포 관리',       cssVar: '--deployer' },
   video:    { emoji: '🎬', name: 'VideoProducer', role: '영상 기획 · 스크립트',   cssVar: '--video' },
+  humanize: { emoji: '✍️', name: 'Humanizer',     role: 'AI 티 제거 · 교열',     cssVar: '--humanizer' },
 };
 
 const ORCHESTRATOR: AgentMeta = {
@@ -103,7 +104,7 @@ export default function Chat() {
             ─  Today&rsquo;s Roster  ─
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <Nameplate agent={ORCHESTRATOR} principal active={busy && activeKey === null} />
           {Object.entries(AGENTS).map(([key, a]) => (
             <Nameplate key={a.name} agent={a} active={activeKey === key} />
