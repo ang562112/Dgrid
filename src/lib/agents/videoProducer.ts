@@ -5,6 +5,7 @@ import { generateGrokImage } from '@/lib/xai';
 export type VideoProducerResult = {
   text: string;
   previewImageUrl?: string;
+  imageError?: string;
 };
 
 export async function runVideoProducer(brief: string): Promise<VideoProducerResult> {
@@ -36,15 +37,22 @@ export async function runVideoProducer(brief: string): Promise<VideoProducerResu
     prompt: brief,
   });
 
-  // Extract the [Preview Prompt] line for image generation
   const previewMatch = text.match(/\[Preview Prompt\]\s*(.+?)(?:\n|$)/i);
   const imagePrompt = previewMatch?.[1]?.trim();
 
   let previewImageUrl: string | undefined;
-  if (imagePrompt) {
-    const url = await generateGrokImage(imagePrompt);
-    if (url) previewImageUrl = url;
+  let imageError: string | undefined;
+
+  if (!imagePrompt) {
+    imageError = 'VideoProducer가 [Preview Prompt] 라인을 출력하지 않아 이미지 생성을 건너뜀';
+  } else {
+    const result = await generateGrokImage(imagePrompt);
+    if ('url' in result) {
+      previewImageUrl = result.url;
+    } else {
+      imageError = result.error;
+    }
   }
 
-  return { text, previewImageUrl };
+  return { text, previewImageUrl, imageError };
 }
