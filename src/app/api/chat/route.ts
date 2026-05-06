@@ -7,6 +7,10 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { dgrid } from '@/lib/dgrid';
+import { xai } from '@/lib/xai';
+
+// Allow up to 5 minutes for slow video generation polling
+export const maxDuration = 300;
 import { runResearcher } from '@/lib/agents/researcher';
 import { runToolbox } from '@/lib/agents/toolbox';
 import { runExecutor } from '@/lib/agents/executor';
@@ -29,7 +33,7 @@ export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
 
   const result = streamText({
-    model: dgrid.chatModel('anthropic/claude-sonnet-4.5'),
+    model: xai.chatModel(process.env.ORCHESTRATOR_MODEL || 'grok-4-fast-reasoning'),
     system: `당신은 자동화 에이전시의 "Orchestrator"입니다.
 6명의 sub-agent를 도구로 호출해 협업을 조율합니다:
 - research: 벤치마킹·사례 조사
@@ -41,10 +45,11 @@ export async function POST(req: Request) {
 
 [중요 — 거절·hallucinate 금지]
 1) 사용자가 위 6개 도구로 처리 가능한 작업을 요청했을 때 절대 "직접 할 수 없습니다", "API에 접근할 수 없습니다", "시스템 환경의 제약" 같은 거절 문구를 사용하지 마세요. 등록된 도구를 즉시 호출하면 됩니다.
-2) video 도구의 출력은 { text, previewImageUrl?, imageError? } 형태입니다.
+2) video 도구의 출력은 { text, previewImageUrl?, imageError?, previewVideoUrl?, videoError? } 형태입니다.
    - previewImageUrl이 있으면: 사용자 화면에 이미지가 이미 카드 안에 렌더링되었습니다. "이미지를 표시할 수 없다" 같은 거짓말 금지.
-   - imageError가 있으면: 그 에러 메시지 원문을 사용자에게 그대로 전달하세요. 예: "xAI 이미지 생성 실패 — Incorrect API key". 변명·일반화·"시스템이 이미지를 직접 렌더링할 수 없다" 같은 hallucinate 절대 금지.
-   - 둘 다 없으면: 사용자가 요청한 게 명확히 영상/이미지였는데 도구가 이미지 부분을 처리 못한 것이니 사실 보고.
+   - previewVideoUrl이 있으면: 사용자 화면에 비디오가 이미 재생 가능하게 렌더링되었습니다.
+   - imageError / videoError가 있으면: 그 에러 메시지 원문을 사용자에게 그대로 전달하세요. 변명·일반화 금지.
+   - 비디오는 1~3분 걸리는 비동기 작업이라 응답이 늦어질 수 있음. 비디오 키워드(영상/광고/릴스/유튜브 등)가 있을 때만 비디오 생성됨.
 3) 도구가 실제로 실패한 경우에만 사실 그대로 보고하세요(가짜 사과 X). 성공한 경우 결과를 신뢰하세요.
 
 원칙:

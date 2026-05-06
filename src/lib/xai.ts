@@ -1,4 +1,16 @@
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+
 const XAI_BASE = 'https://api.x.ai/v1';
+
+/* ─────────── Chat provider (OpenAI-compatible) ─────────── */
+
+export const xai = createOpenAICompatible({
+  name: 'xai',
+  baseURL: XAI_BASE,
+  apiKey: process.env.XAI_API_KEY,
+});
+
+/* ─────────── Image generation ─────────── */
 
 export type GrokImageResult = { url: string } | { error: string };
 
@@ -6,37 +18,39 @@ type ImageGenResponse = {
   data?: Array<{ url?: string; b64_json?: string }>;
 };
 
-export async function generateGrokImage(prompt: string): Promise<GrokImageResult> {
-  const apiKey = process.env.XAI_API_KEY;
-  if (!apiKey) return { error: 'XAI_API_KEY가 설정되지 않음' };
+function authHeaders(): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${process.env.XAI_API_KEY ?? ''}`,
+  };
+}
 
-  const model = process.env.XAI_IMAGE_MODEL || 'grok-2-image';
+function parseError(status: number, body: string): string {
+  let detail = `HTTP ${status}`;
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
+    if (typeof parsed.error === 'string') detail = parsed.error;
+    else if (typeof parsed.message === 'string' && parsed.message) detail = parsed.message;
+  } catch {
+    if (body) detail = `${detail}: ${body.slice(0, 200)}`;
+  }
+  return detail;
+}
+
+export async function generateGrokImage(prompt: string): Promise<GrokImageResult> {
+  if (!process.env.XAI_API_KEY) return { error: 'XAI_API_KEY가 설정되지 않음' };
+
+  const model = process.env.XAI_IMAGE_MODEL || 'grok-imagine-image';
 
   try {
     const res = await fetch(`${XAI_BASE}/images/generations`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        prompt,
-        n: 1,
-        response_format: 'url',
-      }),
+      headers: authHeaders(),
+      body: JSON.stringify({ model, prompt, n: 1, response_format: 'url' }),
     });
 
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      let detail = `HTTP ${res.status}`;
-      try {
-        const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
-        if (typeof parsed.error === 'string') detail = parsed.error;
-        else if (typeof parsed.message === 'string' && parsed.message) detail = parsed.message;
-      } catch {
-        if (body) detail = `${detail}: ${body.slice(0, 200)}`;
-      }
+      const detail = parseError(res.status, await res.text().catch(() => ''));
       console.warn('[xai image]', detail);
       return { error: `xAI 이미지 생성 실패 — ${detail}` };
     }
@@ -51,4 +65,73 @@ export async function generateGrokImage(prompt: string): Promise<GrokImageResult
     console.warn('[xai image]', msg);
     return { error: `네트워크 오류: ${msg}` };
   }
+}
+
+/* ─────────── Video generation (async, polling) ─────────── */
+
+export type GrokVideoResult = { url: string } | { error: string };
+
+type VideoStartResponse = { request_id?: string };
+type VideoStatusResponse = {
+  status?: string;
+  url?: string;
+  data?: Array<{ url?: string }>;
+  error?: string;
+};
+
+const VIDEO_POLL_INTERVAL_MS = 5_000;
+const VIDEO_POLL_TIMEOUT_MS = 240_000; // 4 minutes
+
+export async function generateGrokVideo(prompt: string): Promise<GrokVideoResult> {
+  if (!process.env.XAI_API_KEY) return { error: 'XAI_API_KEY가 설정되지 않음' };
+
+  const model = process.env.XAI_VIDEO_MODEL || 'grok-imagine-video';
+
+  // Step 1: submit job
+  let requestId: string;
+  try {
+    const res = await fetch(`${XAI_BASE}/videos/generations`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ model, prompt, n: 1 }),
+    });
+    if (!res.ok) {
+      const detail = parseError(res.status, await res.text().catch(() => ''));
+      console.warn('[xai video submit]', detail);
+      return { error: `xAI 비디오 작업 시작 실패 — ${detail}` };
+    }
+    const submitted: VideoStartResponse = await res.json();
+    if (!submitted.request_id) return { error: 'xAI가 request_id를 반환하지 않음' };
+    requestId = submitted.request_id;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: `비디오 작업 시작 네트워크 오류: ${msg}` };
+  }
+
+  // Step 2: poll
+  const deadline = Date.now() + VIDEO_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, VIDEO_POLL_INTERVAL_MS));
+    try {
+      const res = await fetch(`${XAI_BASE}/videos/${requestId}`, {
+        method: 'GET',
+        headers: authHeaders(),
+      });
+      if (res.status === 202) continue;
+      if (!res.ok) {
+        const detail = parseError(res.status, await res.text().catch(() => ''));
+        return { error: `xAI 비디오 폴링 실패 — ${detail}` };
+      }
+      const data: VideoStatusResponse = await res.json();
+      const url = data.url ?? data.data?.[0]?.url;
+      if (url) return { url };
+      if (data.error) return { error: `xAI 비디오 생성 에러 — ${data.error}` };
+      // unexpected payload — keep polling a bit more
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[xai video poll]', msg);
+    }
+  }
+
+  return { error: `xAI 비디오 생성 타임아웃 (${VIDEO_POLL_TIMEOUT_MS / 1000}s, request_id=${requestId})` };
 }

@@ -351,11 +351,31 @@ function extractImageError(output: unknown): string | null {
   return typeof err === 'string' ? err : null;
 }
 
+function extractPreviewVideoUrl(output: unknown): string | null {
+  if (!output || typeof output !== 'object') return null;
+  const o = output as { output?: unknown };
+  const inner = o.output;
+  if (!inner || typeof inner !== 'object') return null;
+  const url = (inner as { previewVideoUrl?: unknown }).previewVideoUrl;
+  return typeof url === 'string' ? url : null;
+}
+
+function extractVideoError(output: unknown): string | null {
+  if (!output || typeof output !== 'object') return null;
+  const o = output as { output?: unknown };
+  const inner = o.output;
+  if (!inner || typeof inner !== 'object') return null;
+  const err = (inner as { videoError?: unknown }).videoError;
+  return typeof err === 'string' ? err : null;
+}
+
 function AgentReport({ agent, part }: { agent: AgentMeta; part: ToolPart }) {
   const promptText = extractPromptText(part.input);
   const durationMs = extractDurationMs(part.output);
   const previewImageUrl = extractPreviewImageUrl(part.output);
   const imageError = extractImageError(part.output);
+  const previewVideoUrl = extractPreviewVideoUrl(part.output);
+  const videoError = extractVideoError(part.output);
 
   return (
     <div className="paper-card rounded-sm overflow-hidden" style={borderAccentStyle(agent.cssVar, 1)}>
@@ -436,6 +456,41 @@ function AgentReport({ agent, part }: { agent: AgentMeta; part: ToolPart }) {
                 </div>
                 <div className="text-xs" style={{ color: '#a02d3d' }}>
                   {imageError}
+                </div>
+              </div>
+            )}
+            {previewVideoUrl && (
+              <figure className="mt-2">
+                <video
+                  src={previewVideoUrl}
+                  controls
+                  loop
+                  muted
+                  playsInline
+                  className="w-full rounded-sm border"
+                  style={{ borderColor: `color-mix(in srgb, var(${agent.cssVar}) 40%, transparent)` }}
+                />
+                <figcaption className="text-[10px] tracking-[0.3em] uppercase font-mono mt-1 text-[color:var(--brass)]">
+                  ✦ Motion clip · X / Grok Imagine
+                </figcaption>
+              </figure>
+            )}
+            {videoError && (
+              <div
+                className="mt-2 rounded-sm border px-3 py-2"
+                style={{
+                  background: 'color-mix(in srgb, #a02d3d 8%, transparent)',
+                  borderColor: 'color-mix(in srgb, #a02d3d 40%, transparent)',
+                }}
+              >
+                <div
+                  className="text-[10px] tracking-[0.3em] uppercase font-mono mb-1"
+                  style={{ color: '#a02d3d' }}
+                >
+                  ⚠ Video generation failed
+                </div>
+                <div className="text-xs" style={{ color: '#a02d3d' }}>
+                  {videoError}
                 </div>
               </div>
             )}
