@@ -452,6 +452,67 @@ function ChatArea({
   onMemorize: (fact: string) => void;
 }) {
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Object URL cache for previews — revoked on unmount/replace to avoid leaks
+  const previewUrlsRef = useRef<Map<File, string>>(new Map());
+  const getPreviewUrl = (f: File): string => {
+    let url = previewUrlsRef.current.get(f);
+    if (!url) {
+      url = URL.createObjectURL(f);
+      previewUrlsRef.current.set(f, url);
+    }
+    return url;
+  };
+  useEffect(() => {
+    const cache = previewUrlsRef.current;
+    return () => {
+      for (const url of cache.values()) URL.revokeObjectURL(url);
+      cache.clear();
+    };
+  }, []);
+
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => {
+      const removed = prev[idx];
+      if (removed) {
+        const url = previewUrlsRef.current.get(removed);
+        if (url) {
+          URL.revokeObjectURL(url);
+          previewUrlsRef.current.delete(removed);
+        }
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const addImageFiles = (files: File[]) => {
+    const images = files.filter((f) => f.type.startsWith('image/'));
+    if (images.length === 0) return;
+    setAttachments((prev) => [...prev, ...images]);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imgs: File[] = [];
+    for (const it of items) {
+      if (it.kind === 'file' && it.type.startsWith('image/')) {
+        const f = it.getAsFile();
+        if (f) imgs.push(f);
+      }
+    }
+    if (imgs.length > 0) {
+      e.preventDefault();
+      addImageFiles(imgs);
+    }
+  };
+
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (list) addImageFiles(Array.from(list));
+    e.target.value = '';
+  };
 
   const memoryFacts = useMemo(() => memory.map((m) => m.fact), [memory]);
   const memoryRef = useRef(memoryFacts);
@@ -620,11 +681,31 @@ function ChatArea({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!input.trim() || busy) return;
-            sendMessage({ text: input });
+            if (busy) return;
+            if (!input.trim() && attachments.length === 0) return;
+
+            let fileList: FileList | undefined;
+            if (attachments.length > 0) {
+              const dt = new DataTransfer();
+              for (const f of attachments) dt.items.add(f);
+              fileList = dt.files;
+            }
+
+            if (fileList && input.trim()) {
+              sendMessage({ text: input, files: fileList });
+            } else if (fileList) {
+              sendMessage({ files: fileList });
+            } else {
+              sendMessage({ text: input });
+            }
+
             setInput('');
+            // Revoke and clear previews
+            for (const url of previewUrlsRef.current.values()) URL.revokeObjectURL(url);
+            previewUrlsRef.current.clear();
+            setAttachments([]);
           }}
-          className="max-w-3xl mx-auto px-6 py-5"
+          className="max-w-3xl mx-auto px-6 py-4"
         >
           <div className="flex items-center gap-3 mb-2">
             <div className="text-[10px] tracking-[0.4em] uppercase text-[color:var(--brass)] font-mono">
@@ -632,7 +713,59 @@ function ChatArea({
             </div>
             <div className="h-px flex-1 brass-line" />
           </div>
+
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {attachments.map((f, i) => (
+                <div
+                  key={`${f.name}-${i}`}
+                  className="relative group rounded-sm overflow-hidden"
+                  style={{ border: '1px solid color-mix(in srgb, var(--brass) 35%, transparent)' }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={getPreviewUrl(f)}
+                    alt={f.name}
+                    className="w-16 h-16 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[10px] leading-none transition-opacity opacity-0 group-hover:opacity-100"
+                    style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+                    aria-label="Remove attachment"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={handleFilePick}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy}
+              aria-label="Attach image"
+              className="px-3 rounded-sm text-base font-medium disabled:opacity-40 transition-colors"
+              style={{
+                background: 'var(--paper-2)',
+                border: '1px solid color-mix(in srgb, var(--brass) 35%, transparent)',
+                color: 'var(--ink)',
+              }}
+              title="이미지 첨부 (Ctrl+V로 붙여넣기도 가능)"
+            >
+              📎
+            </button>
             <input
               className="flex-1 rounded-sm px-4 py-3 text-sm focus:outline-none placeholder:italic transition-colors"
               style={{
@@ -641,13 +774,18 @@ function ChatArea({
                 color: 'var(--ink)',
               }}
               value={input}
-              placeholder="자동화 의뢰를 작성해주세요..."
+              placeholder={
+                attachments.length > 0
+                  ? '이미지에 대한 지시를 적어주세요... (선택)'
+                  : '자동화 의뢰를 작성해주세요... (이미지는 Ctrl+V로 붙여넣기)'
+              }
               onChange={(e) => setInput(e.currentTarget.value)}
+              onPaste={handlePaste}
               disabled={busy}
             />
             <button
               type="submit"
-              disabled={busy || !input.trim()}
+              disabled={busy || (!input.trim() && attachments.length === 0)}
               className="px-5 py-3 rounded-sm text-sm tracking-[0.2em] uppercase font-medium disabled:opacity-40 transition-colors font-mono"
               style={{ background: 'var(--ink)', color: 'var(--paper)' }}
             >
@@ -701,9 +839,13 @@ function Nameplate({
   );
 }
 
-type MessagePart = { type: string; text?: string };
+type MessagePart = { type: string; text?: string; mediaType?: string; url?: string; filename?: string };
 
 function DirectorNote({ parts }: { parts: MessagePart[] }) {
+  const textParts = parts.filter((p) => p.type === 'text' && p.text);
+  const fileParts = parts.filter((p) => p.type === 'file' && p.url);
+  const imageParts = fileParts.filter((p) => p.mediaType?.startsWith('image/'));
+
   return (
     <div className="paper-card rounded-sm p-5" style={borderAccentStyle('--ink', 1)}>
       <div className="flex items-center justify-between mb-2">
@@ -714,13 +856,32 @@ function DirectorNote({ parts }: { parts: MessagePart[] }) {
           ✦ Dispatch
         </div>
       </div>
-      <div className="serif-display text-lg leading-relaxed text-[color:var(--ink)]">
-        {parts.map((p, i) =>
-          p.type === 'text' && p.text ? (
+      {textParts.length > 0 && (
+        <div className="serif-display text-lg leading-relaxed text-[color:var(--ink)]">
+          {textParts.map((p, i) => (
             <span key={i} className="whitespace-pre-wrap">{p.text}</span>
-          ) : null,
-        )}
-      </div>
+          ))}
+        </div>
+      )}
+      {imageParts.length > 0 && (
+        <div className={`flex flex-wrap gap-2 ${textParts.length > 0 ? 'mt-3' : ''}`}>
+          {imageParts.map((p, i) => (
+            <figure
+              key={i}
+              className="rounded-sm overflow-hidden"
+              style={{ border: '1px solid color-mix(in srgb, var(--brass) 30%, transparent)' }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={p.url}
+                alt={p.filename ?? 'attachment'}
+                className="max-w-xs max-h-64 object-contain"
+                style={{ background: 'var(--paper-3)' }}
+              />
+            </figure>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
